@@ -1,16 +1,21 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import json
+import time
+
 
 app = FastAPI(
     title="RanchoFM API",
-    description="Servidor de scrobbling do RanchoFM",
     version="0.1.0"
 )
 
 
+# -------------------------
+# Health check
+# -------------------------
+
 @app.get("/")
-async def home():
+async def root():
     return {
         "project": "RanchoFM",
         "version": "0.1.0",
@@ -18,71 +23,196 @@ async def home():
     }
 
 
-@app.post("/webhook")
-async def webhook(request: Request):
-    """
-    Endpoint utilizado pelo Web Scrobbler.
-    """
-
-    payload = await request.json()
-
-    print("\n========== WEB SCROBBLER ==========")
-    print(json.dumps(payload, indent=2, ensure_ascii=False))
-    print("===================================\n")
-
-    return JSONResponse({
-        "success": True
-    })
+# -------------------------
+# WEB SCROBBLER
+# -------------------------
 
 @app.post("/webhook/{username}")
-async def webhook(username: str, request: Request):
+async def web_scrobbler(username: str, request: Request):
+
     data = await request.json()
 
-    print("========== WEB SCROBBLER ==========")
+    print("\n========== WEB SCROBBLER ==========")
     print(f"USER: {username}")
-    print(json.dumps(data, indent=2))
-    print("===================================")
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+    print("===================================\n")
+
+
+    event = data.get("eventName")
+
+    if event == "scrobble":
+        print("🎵 SCROBBLE RECEBIDO")
+
+    elif event == "nowplaying":
+        print("▶️ NOW PLAYING RECEBIDO")
+
 
     return {
         "status": "ok",
-        "user": username
+        "user": username,
+        "event": event
     }
 
-@app.post("/2.0/")
-async def pano(request: Request):
-    """
-    Endpoint compatível com clientes Last.fm-like.
-    Inicialmente apenas registra tudo o que receber.
-    """
+
+
+# -------------------------
+# PANO SCROBBLER
+# LAST.FM LIKE API
+# -------------------------
+
+@app.api_route(
+    "/2.0/",
+    methods=["GET", "POST"]
+)
+async def pano_scrobbler(request: Request):
+
+
+    # =========================
+    # GET REQUESTS
+    # =========================
+
+    if request.method == "GET":
+
+        params = request.query_params
+
+        method = params.get("method")
+        user = params.get("user")
+
+
+        print("\n========== PANO GET ==========")
+        print(dict(params))
+        print("==============================\n")
+
+
+        # User info
+
+        if method == "user.getInfo":
+
+            return {
+                "user": {
+                    "name": user,
+                    "realname": user,
+                    "playcount": 0,
+                    "registered": {
+                        "unixtime": int(time.time())
+                    }
+                }
+            }
+
+
+        # Top tracks
+
+        if method == "user.getTopTracks":
+
+            return {
+                "toptracks": {
+                    "track": []
+                }
+            }
+
+
+        # Top artists
+
+        if method == "user.getTopArtists":
+
+            return {
+                "topartists": {
+                    "artist": []
+                }
+            }
+
+
+        return {
+            "error": 6,
+            "message": "Invalid method"
+        }
+
+
+
+    # =========================
+    # POST REQUESTS
+    # =========================
+
 
     form = await request.form()
-    data = dict(form)
 
-    print("\n========== PANO ==========")
+    params = dict(form)
 
-    for key, value in data.items():
-        print(f"{key}: {value}")
 
-    print("===================================\n")
+    print("\n========== PANO POST ==========")
+    print(json.dumps(params, indent=2))
+    print("===============================\n")
 
-    method = data.get("method")
 
-    #
-    # Login
-    #
+    method = params.get("method")
+
+
+    # -------------------------
+    # LOGIN
+    # -------------------------
+
     if method == "auth.getMobileSession":
-        return JSONResponse({
+
+        username = params.get("username")
+
+
+        print(
+            f"PANO LOGIN: {username}"
+        )
+
+
+        return {
             "session": {
-                "name": data.get("username"),
+                "name": username,
                 "key": "ranchofm-session",
                 "subscriber": 0
             }
-        })
+        }
 
-    #
-    # Todos os outros métodos
-    #
-    return JSONResponse({
-        "status": "received",
-        "method": method
-    })
+
+    # -------------------------
+    # NOW PLAYING
+    # -------------------------
+
+    if method == "track.updateNowPlaying":
+
+        print("▶️ PANO NOW PLAYING")
+
+        return {
+            "nowplaying": {
+                "ignoredMessage": {
+                    "code": 0,
+                    "explanation": ""
+                }
+            }
+        }
+
+
+
+    # -------------------------
+    # SCROBBLE
+    # -------------------------
+
+    if method == "track.scrobble":
+
+        print("🎵 PANO SCROBBLE")
+
+        return {
+            "scrobbles": {
+                "@attr": {
+                    "accepted": 1,
+                    "ignored": 0
+                },
+                "scrobble": []
+            }
+        }
+
+
+    # -------------------------
+    # FALLBACK
+    # -------------------------
+
+    return {
+        "error": 6,
+        "message": "Unknown method"
+    }
