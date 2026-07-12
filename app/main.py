@@ -34,6 +34,19 @@ async def webhook(request: Request):
         "success": True
     })
 
+@app.post("/webhook/{username}")
+async def webhook(username: str, request: Request):
+    data = await request.json()
+
+    print("========== WEB SCROBBLER ==========")
+    print(f"USER: {username}")
+    print(json.dumps(data, indent=2))
+    print("===================================")
+
+    return {
+        "status": "ok",
+        "user": username
+    }
 
 @app.post("/2.0/")
 async def pano(request: Request):
